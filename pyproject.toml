@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "sc-corr-testing"
+version = "0.1.0"
+description = "Basic test env"
+authors = ["Arslan <rslnkrmt2552@gmail.com>", "Majd <majd.kharrat@gmail.com>", "Sercan Aygün <ayguns@yildiz.edu.tr>"]
+license = "GPL-3.0"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+numpy = "^1.19.1"
+numba = "^0.51.0"
+cupy-cuda102 = "^7.7.0"
+
+[tool.poetry.dev-dependencies]
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
