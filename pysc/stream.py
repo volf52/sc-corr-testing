@@ -43,18 +43,20 @@ class SCStream:
         self.shuffle_stream()
 
     def __generate_stream(self, inp):
-        inp = to_device(inp, self.__device)
+        if not (isinstance(inp, np.ndarray) or isinstance(inp, cp.ndarray)):
+            inp = self.xp.array(inp, dtype=np.float32)[None]
+        else:
+            inp = to_device(inp, self.__device)
 
-        if isinstance(inp, self.xp.ndarray):
-            self.__stream = self.xp.zeros(inp.shape + (self.precision,), dtype=np.bool)
-            self._stream_generator(
-                inp,
-                self.min_val,
-                self.max_val,
-                self.precision,
-                self.__stream,
-                self.__stream,
-            )
+        self.__stream = self.xp.zeros(inp.shape + (self.precision,), dtype=np.bool)
+        self._stream_generator(
+            inp,
+            self.min_val,
+            self.max_val,
+            self.precision,
+            self.__stream,
+            self.__stream,
+        )
 
     def shuffle_stream(self):
         last_exis = self.__stream.ndim - 1
