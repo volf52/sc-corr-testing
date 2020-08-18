@@ -1,6 +1,10 @@
 from numba import guvectorize
 
 
+FTYLIST = ["void(float32, int32, int32, int32, boolean[:], boolean[:])"]
+SIGNATURE = "(),(),(),(),(n)->(n)"
+
+
 def _SCStream(x, min_val, max_val, precision, _, out):
     if x < min_val:
         quantX = min_val
@@ -15,11 +19,7 @@ def _SCStream(x, min_val, max_val, precision, _, out):
     out[:n_ones] = 1
 
 
-Stream = guvectorize(
-    ["void(float32, float32, float32, float32, boolean[:], boolean[:])"],
-    "(),(),(),(),(n)->(n)",
-    nopython=True,
-)(_SCStream)
 
-# TODO: Complete this, ofc
-StreamCuda = None
+Stream = guvectorize(FTYLIST, SIGNATURE, nopython=True)(_SCStream)
+
+StreamCuda = guvectorize(FTYLIST, SIGNATURE, nopython=True, target='cuda')(_SCStream)

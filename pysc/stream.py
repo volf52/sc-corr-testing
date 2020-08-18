@@ -5,10 +5,9 @@ from typing import Union
 from pysc.utils import Stream, StreamCuda
 
 ARRAY = Union[cp.ndarray, np.ndarray]
-DEVICE = ["cpu", "gpu"]
 
 
-def to_device(x: ARRAY, device: DEVICE):
+def to_device(x: ARRAY, device):
     xp = cp.get_array_module(x)
     if device == "cpu" and xp == cp:
         return cp.asnumpy(x)
@@ -25,33 +24,77 @@ class SCStream:
     """
 
     def __init__(
-        self, inp, /, min_val=-1.0, max_val=1.0, precision=8, *, device: DEVICE = "cpu"
+        self, inp, /, min_val=-1, max_val=1, precision=8, *, device = "cpu"
     ):
         assert device in ("cpu", "gpu")
         self.precision = int(precision)
-        self.min_val = float(min_val)
-        self.max_val = float(max_val)
-        self.device = device
+        self.min_val = int(min_val)
+        self.max_val = int(max_val)
+        self.__device = device
 
         if device == "cpu":
             self.xp = np
         else:
             self.xp = cp
 
-        self.stream_generator = [Stream, StreamCuda][device == "gpu"]
-        self._stream: ARRAY = None
-        # self.generate_stream(inp)
+        self._stream_generator = [Stream, StreamCuda][device == "gpu"]
+        self.__stream: ARRAY = None
+        self.__generate_stream(inp)
+        self.shuffle_stream()
 
-    def generate_stream(self, inp):
-        inp = to_device(inp, self.device)
+    def __generate_stream(self, inp):
+        inp = to_device(inp, self.__device)
 
         if isinstance(inp, self.xp.ndarray):
-            self._stream = self.xp.zeros(inp.shape + (self.precision,), dtype=np.bool)
-            self.stream_generator(
+            self.__stream = self.xp.zeros(inp.shape + (self.precision,), dtype=np.bool)
+            self._stream_generator(
                 inp,
                 self.min_val,
                 self.max_val,
                 self.precision,
-                self._stream,
-                self._stream,
+                self.__stream,
+                self.__stream,
             )
+
+    def shuffle_stream(self):
+        last_exis = self.__stream.ndim - 1
+        self.xp.random.shuffle(self.__stream.swapaxes(0, last_exis))
+
+    def to_device(self, device):
+        assert device in ("cpu", "gpu")
+        if device == self.__device:
+            return
+
+        self.__device = device
+
+        if device == "cpu":
+            self.xp = np
+
+        else:
+            self.xp = cp
+
+
+    @property
+    def device(self):
+        return self.__device
+
+    @property
+    def _stream(self):
+        return self.__stream
+
+    @property
+    def shape(self):
+        return self.__stream.shape
+
+    @property
+    def ndim(self):
+        return self.__stream.ndim
+
+    def __len__(self):
+        return len(self.__stream)
+
+    def __iter__(self):
+        return iter(self.__stream)
+
+    def __getitem__(self, idx):
+        return self.__stream[idx]
