@@ -23,9 +23,7 @@ class SCStream:
     Main class for SC Streams.
     """
 
-    def __init__(
-        self, inp, /, min_val=-1, max_val=1, precision=8, *, device = "cpu"
-    ):
+    def __init__(self, inp, /, min_val=-1, max_val=1, precision=8, *, device="cpu"):
         assert device in ("cpu", "gpu")
         self.precision = int(precision)
         self.min_val = int(min_val)
@@ -59,8 +57,8 @@ class SCStream:
         )
 
     def shuffle_stream(self):
-        last_exis = self.__stream.ndim - 1
-        self.xp.random.shuffle(self.__stream.swapaxes(0, last_exis))
+        last_axis = self.__stream.ndim - 1
+        self.xp.random.shuffle(self.__stream.swapaxes(0, last_axis))
 
     def to_device(self, device):
         assert device in ("cpu", "gpu")
@@ -74,7 +72,6 @@ class SCStream:
 
         else:
             self.xp = cp
-
 
     @property
     def device(self):
@@ -91,6 +88,10 @@ class SCStream:
     @property
     def ndim(self):
         return self.__stream.ndim
+
+    @property
+    def size(self):
+        return self.__stream.size
 
     def __len__(self):
         return len(self.__stream)
