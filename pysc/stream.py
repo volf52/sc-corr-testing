@@ -100,3 +100,7 @@ class SCStream:
 
     def __getitem__(self, idx):
         return self.__stream[idx]
+
+    def __array__(self):
+        """Allows us to use np.array and cp.array directly on SCStream objects."""
+        return self.__stream
