@@ -1,6 +1,5 @@
 from numba import guvectorize
 
-
 FTYLIST = ["void(float32, int32, int32, int32, boolean[:], boolean[:])"]
 SIGNATURE = "(),(),(),(),(n)->(n)"
 
@@ -19,7 +18,6 @@ def _SCStream(x, min_val, max_val, precision, _, out):
     out[:n_ones] = 1
 
 
-
 Stream = guvectorize(FTYLIST, SIGNATURE, nopython=True)(_SCStream)
 
-StreamCuda = guvectorize(FTYLIST, SIGNATURE, nopython=True, target='cuda')(_SCStream)
+StreamCuda = guvectorize(FTYLIST, SIGNATURE, nopython=True, target="cuda")(_SCStream)
