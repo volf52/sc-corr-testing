@@ -1,11 +1,11 @@
-import numpy as np
-import cupy as cp
-
-from typing import Union
-from pysc.utils import Stream, StreamCuda
 from pprint import pformat
+from typing import Tuple
 
-ARRAY = Union[cp.ndarray, np.ndarray]
+import cupy as cp
+import numpy as np
+
+from pysc.ops import find_corr_mat, pearson, sc_corr
+from pysc.utils import ARRAY, Stream, StreamCuda
 
 
 def to_device(x: ARRAY, device):
@@ -74,6 +74,19 @@ class SCStream:
         else:
             self.xp = cp
 
+    def corr_with(self, other: "SCStream") -> Tuple[ARRAY, ARRAY]:
+        assert self.shape == other.shape
+        assert (
+            self.__device == other.__device
+        )  # may change to moving to cpu if devices are not the same
+
+        a, b, c, d = find_corr_mat(self.__stream, other.__stream, self.__device)
+
+        scc = sc_corr(a, b, c, d, self.precision)
+        pearson_corr = pearson(a, b, c, d)
+
+        return scc, pearson_corr
+
     @property
     def device(self):
         return self.__device
@@ -83,7 +96,7 @@ class SCStream:
         return self.__stream
 
     @_stream.setter
-    def _stream(self, newStream):
+    def _stream(self, newStream: ARRAY):
         assert newStream.shape == self.__stream.shape
         assert newStream.dtype == self.__stream.dtype
         newStream = to_device(newStream, self.__device)

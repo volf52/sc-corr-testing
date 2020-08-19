@@ -1,5 +1,10 @@
+from typing import Union
+
+import cupy as cp
+import numpy as np
 from numba import guvectorize
 
+ARRAY = Union[cp.ndarray, np.ndarray]
 FTYLIST = ["void(float32, int32, int32, int32, boolean[:], boolean[:])"]
 SIGNATURE = "(),(),(),(),(n)->(n)"
 

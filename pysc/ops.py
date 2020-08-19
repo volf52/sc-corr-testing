@@ -1,8 +1,8 @@
-from numba import vectorize as nvectorize
-import numpy as np
 import cupy as cp
-from math import sqrt
-from pysc.stream import SCStream
+import numpy as np
+from numba import vectorize as nvectorize
+
+from pysc.utils import ARRAY
 
 UNARY_OPS_SIGNATURE = "boolean(boolean)"
 BINARY_OPS_SIGNATURE = "boolean(boolean, boolean)"
@@ -26,7 +26,7 @@ def not_it(x):
     return ~x
 
 
-def _corr_matrix(x, y):
+def _corr_matrix(x: ARRAY, y: ARRAY):
     a = and_it(x, y)
     b = and_it(x, not_it(y))
     c = and_it(not_it(x), y)
@@ -43,7 +43,7 @@ _corr_matrix_cuda = cp.ElementwiseKernel(
 )
 
 
-def find_corr_mat(stream1: SCStream, stream2: SCStream, device):
+def find_corr_mat(stream1: ARRAY, stream2: ARRAY, device):
     corr_func = [_corr_matrix_cuda, _corr_matrix][device == "cpu"]
     ax = None if (tmp := stream1.ndim) == 0 else tmp - 1
 
@@ -55,7 +55,8 @@ def find_corr_mat(stream1: SCStream, stream2: SCStream, device):
 
 # TODO: Rewrite separately for np and cp with cp.EWK and numba
 
-def sc_corr(a, b, c, d, n):
+
+def sc_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, n: int):
     # assumed ndim >= 2 for a,b,c,d
 
     xp = cp.get_array_module(a)
@@ -68,14 +69,22 @@ def sc_corr(a, b, c, d, n):
     denom2 = a_b_into_a_c - n * xp.maximum(a - d, 0)
 
     denom = xp.where(numer > 0, denom1, denom2)
+
+    # have to calculate the mask before, as the division is done inplace
+    # not using xp.isnan after the division. Cause if there is still an nan there, we want to catch it in the tests
+
+    zeroit = xp.isclose(numer, 0.0)
     numer /= denom
+    numer[zeroit] = 0.0
 
     return numer
 
 
-def pearson(a, b, c, d):
+def pearson(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY):
     xp = cp.get_array_module(a)
+
     numer = (a * d - b * c).astype(np.float32)
     denom = xp.sqrt((a + b) * (a + c) * (b + d) * (c + d))
     numer /= denom
+
     return numer
