@@ -90,9 +90,9 @@ class SCStream:
         a, b, c, d = find_corr_mat(self.__stream, other.__stream, self.__device)
 
         scc = sc_corr(a, b, c, d, self.__precision, self.__device)
-        pearson_corr = pearson_corr(a, b, c, d, self.__device)
+        psc = pearson_corr(a, b, c, d, self.__device)
 
-        return scc, pearson_corr
+        return scc, psc
 
     @property
     def _stream(self):
