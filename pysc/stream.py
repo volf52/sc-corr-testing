@@ -4,7 +4,7 @@ from typing import Tuple
 import cupy as cp
 import numpy as np
 
-from pysc.ops import find_corr_mat, pearson, sc_corr
+from pysc.ops import find_corr_mat, pearson_corr, sc_corr
 from pysc.utils import ARRAY, createProbabilityStream, npStream
 
 
@@ -90,7 +90,7 @@ class SCStream:
         a, b, c, d = find_corr_mat(self.__stream, other.__stream, self.__device)
 
         scc = sc_corr(a, b, c, d, self.__precision, self.__device)
-        pearson_corr = pearson(a, b, c, d)
+        pearson_corr = pearson_corr(a, b, c, d, self.__device)
 
         return scc, pearson_corr
 

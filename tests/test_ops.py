@@ -2,11 +2,8 @@ import cupy as cp
 import numpy as np
 import pytest
 
-from pysc.ops import find_corr_mat, sc_corr
+from pysc.ops import find_corr_mat, pearson_corr, sc_corr
 from pysc.stream import SCStream
-
-
-# TODO: Complete the tests. Add for n-dim arrays. Add specific for cupy arrays
 
 
 @pytest.fixture
@@ -55,32 +52,38 @@ def test_stream_corr(starter_values):
     sc_one._stream = xvals
     sc_two._stream = yvals
 
-    scc, _ = sc_one.corr_with(sc_two)
+    scc, psc = sc_one.corr_with(sc_two)
+    psc.round(2, out=psc)
 
     assert np.array_equal(starter_values["expected_scc"], scc)
+    assert np.allclose(starter_values["expected_pearson"], psc)
 
 
 def test_stream_corr_cuda(starter_values):
     xvals, yvals = starter_values["xvals_cuda"], starter_values["yvals_cuda"]
+    device = "gpu"
 
-    sc_one = SCStream(np.zeros(xvals.shape[0], dtype=np.float32), device="gpu")
-    sc_two = SCStream(np.zeros(yvals.shape[0], dtype=np.float32), device="gpu")
+    sc_one = SCStream(np.zeros(xvals.shape[0], dtype=np.float32), device=device)
+    sc_two = SCStream(np.zeros(yvals.shape[0], dtype=np.float32), device=device)
 
     sc_one._stream = xvals
     sc_two._stream = yvals
 
-    scc, _ = sc_one.corr_with(sc_two)
+    scc, psc = sc_one.corr_with(sc_two)
+    psc.round(2, out=psc)
 
     assert np.all(starter_values["expected_scc_cp"] == scc)
+    assert np.allclose(starter_values["expected_pearson"], psc)
 
 
 def test_sc_corr(starter_values):
     xvals = starter_values["xvals"]
     yvals = starter_values["yvals"]
+    device = "cpu"
 
-    a, b, c, d = find_corr_mat(xvals, yvals, "cpu")
+    a, b, c, d = find_corr_mat(xvals, yvals, device)
 
-    sc_corrs = sc_corr(a, b, c, d, xvals.shape[1], "cpu")
+    sc_corrs = sc_corr(a, b, c, d, xvals.shape[1], device)
 
     assert np.array_equal(starter_values["expected_scc"], sc_corrs)
 
@@ -88,9 +91,36 @@ def test_sc_corr(starter_values):
 def test_sc_corr_cuda(starter_values):
     xvals = starter_values["xvals_cuda"]
     yvals = starter_values["yvals_cuda"]
+    device = "gpu"
 
-    a, b, c, d = find_corr_mat(xvals, yvals, "gpu")
+    a, b, c, d = find_corr_mat(xvals, yvals, device)
 
-    sc_corrs = sc_corr(a, b, c, d, xvals.shape[1], "gpu")
+    sc_corrs = sc_corr(a, b, c, d, xvals.shape[1], device)
 
     assert np.all(starter_values["expected_scc_cp"] == sc_corrs)
+
+
+def test_sc_corr(starter_values):
+    xvals = starter_values["xvals"]
+    yvals = starter_values["yvals"]
+    device = "cpu"
+
+    a, b, c, d = find_corr_mat(xvals, yvals, device)
+
+    pearson_corrs = pearson_corr(a, b, c, d, device)
+    pearson_corrs.round(2, out=pearson_corrs)
+
+    assert np.allclose(starter_values["expected_pearson"], pearson_corrs)
+
+
+def test_sc_corr(starter_values):
+    xvals = starter_values["xvals_cuda"]
+    yvals = starter_values["yvals_cuda"]
+    device = "gpu"
+
+    a, b, c, d = find_corr_mat(xvals, yvals, device)
+
+    pearson_corrs = pearson_corr(a, b, c, d, device)
+    pearson_corrs.round(2, out=pearson_corrs)
+
+    assert np.allclose(starter_values["expected_pearson"], pearson_corrs)

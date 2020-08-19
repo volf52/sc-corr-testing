@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import cupy as cp
 import numpy as np
 from numba import vectorize as nvectorize
@@ -43,7 +45,9 @@ _corr_matrix_cuda = cp.ElementwiseKernel(
 )
 
 
-def find_corr_mat(stream1: ARRAY, stream2: ARRAY, device):
+def find_corr_mat(
+    stream1: ARRAY, stream2: ARRAY, device
+) -> Tuple[ARRAY, ARRAY, ARRAY, ARRAY]:
     corr_func = [_corr_matrix_cuda, _corr_matrix][device == "cpu"]
     ax = None if (tmp := stream1.ndim) == 0 else tmp - 1
 
@@ -57,7 +61,7 @@ def find_corr_mat(stream1: ARRAY, stream2: ARRAY, device):
     return a, b, c, d
 
 
-def sc_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, n: int, device):
+def sc_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, n: int, device) -> ARRAY:
     assert device in ("cpu", "gpu")
 
     if device == "cpu":
@@ -128,11 +132,60 @@ sc_corr_cp = cp.ElementwiseKernel(
 )
 
 
-def pearson(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY):
-    xp = cp.get_array_module(a)
+def pearson_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, device) -> ARRAY:
+    assert device in ("cpu", "gpu")
 
-    numer = (a * d - b * c).astype(np.float32)
-    denom = xp.sqrt((a + b) * (a + c) * (b + d) * (c + d))
-    numer /= denom
+    if device == "cpu":
+        out = pearson_np(a, b, c, d)
+    else:
+        out = pearson_cp(a, b, c, d)
 
-    return numer
+    return out
+
+
+# Improved: 8.85 us -> 1.05 us
+@nvectorize("float32(uint32, uint32, uint32, uint32)", nopython=True)
+def pearson_np(a, b, c, d):
+    out = 1.0 * a * d
+    out -= b * c
+
+    if out == 0:
+        return out
+
+    denom = a + b
+    denom *= a + c
+    denom *= b + d
+    denom *= c + d
+    denom = np.sqrt(denom)
+
+    out /= denom
+
+    return out
+
+
+# Improved: 123 us -> 10.5 us
+pearson_cp = cp.ElementwiseKernel(
+    "uint32 a, uint32 b, uint32 c, uint32 d",
+    "float32 out",
+    """
+        // Might have to change here as well (to unsigned long) if required
+
+        float denom;
+
+        out = 1.0 * a * d;
+        out -= b*c;
+
+        if(out != 0){
+            // denom = 1.0;
+            denom = a + b;
+            denom *= a + c;
+            denom *= b + d;
+            denom *= c + d;
+            denom = sqrt(denom);
+
+            out /= denom;
+        }
+    """,
+    "pearson_cp",
+    reduce_dims=True,
+)
