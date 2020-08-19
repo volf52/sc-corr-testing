@@ -73,9 +73,8 @@ def sc_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, n: int):
     # have to calculate the mask before, as the division is done inplace
     # not using xp.isnan after the division. Cause if there is still an nan there, we want to catch it in the tests
 
-    zeroit = xp.isclose(numer, 0.0)
-    numer /= denom
-    numer[zeroit] = 0.0
+    can_do_division = numer != 0
+    numer[can_do_division] /= denom[can_do_division]
 
     return numer
 
