@@ -38,7 +38,7 @@ def _corr_matrix(x, y):
 _corr_matrix_cuda = cp.ElementwiseKernel(
     "bool x, bool y",
     "bool a, bool b, bool c, bool d",
-    "a = x & y;b = x & ~y;c = ~x & y;d = ~(x | y)",
+    "a = x & y;b = x & !y;c = !x & y;d = !(x | y)",
     "find_corr_mat",
 )
 
