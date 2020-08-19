@@ -3,6 +3,7 @@ import cupy as cp
 
 from typing import Union
 from pysc.utils import Stream, StreamCuda
+from pprint import pformat
 
 ARRAY = Union[cp.ndarray, np.ndarray]
 
@@ -81,6 +82,13 @@ class SCStream:
     def _stream(self):
         return self.__stream
 
+    @_stream.setter
+    def _stream(self, newStream):
+        assert newStream.shape == self.__stream.shape
+        assert newStream.dtype == self.__stream.dtype
+        newStream = to_device(newStream, self.__device)
+        self.__stream = newStream
+
     @property
     def shape(self):
         return self.__stream.shape
@@ -101,6 +109,13 @@ class SCStream:
 
     def __getitem__(self, idx):
         return self.__stream[idx]
+
+    def __repr__(self):
+        s = f"Stream :-> '{self.precision}' Device: '{self.device}'"
+        s += f" Shape: '{self.__stream.shape}' Total: '{self.__stream.size}'\n"
+        s += pformat(self.__stream)
+
+        return s
 
     def __array__(self):
         """Allows us to use np.array and cp.array directly on SCStream objects."""
