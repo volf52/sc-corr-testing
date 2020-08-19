@@ -42,6 +42,8 @@ class SCStream:
         self.__stream: ARRAY = None
         self.__generate_stream(inp)
 
+        cp.get_default_memory_pool().free_all_blocks()
+
     def __generate_stream(self, inp):
         if not (isinstance(inp, np.ndarray) or isinstance(inp, cp.ndarray)):
             inp = self.xp.array(inp, dtype=np.float32)[None]
