@@ -74,7 +74,7 @@ def test_stream_corr_cuda(starter_values):
     assert np.all(starter_values["expected_scc_cp"] == scc)
 
 
-def test_sc_corr_test(starter_values):
+def test_sc_corr(starter_values):
     xvals = starter_values["xvals"]
     yvals = starter_values["yvals"]
 
@@ -85,7 +85,7 @@ def test_sc_corr_test(starter_values):
     assert np.array_equal(starter_values["expected_scc"], sc_corrs)
 
 
-def test_combined_corr_test_cuda(starter_values):
+def test_sc_corr_cuda(starter_values):
     xvals = starter_values["xvals_cuda"]
     yvals = starter_values["yvals_cuda"]
 
