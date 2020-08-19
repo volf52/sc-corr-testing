@@ -36,13 +36,6 @@ def npStream(n_ones: ARRAY, out: ARRAY):
     np.random.shuffle(out)
 
 
-@guvectorize(
-    "void(int32, boolean[:], boolean[:])", "(),(n)->(n)", target="cuda", nopython=True
-)
-def cpStream(n_ones: ARRAY, _, out: ARRAY):
-    out[:n_ones] = 1
-
-
-def shuffle_along_axis_cp(a, axis):
-    idx = cp.random.rand(*a.shape).argsort(axis=axis)
-    return cp.take_along_axis(a, idx, axis=axis)
+# @guvectorize("void(int32, boolean[:], boolean[:])", "(),(n)->(n)", target='cuda', nopython=True)
+# def cpStream(n_ones: ARRAY, _, out: ARRAY):
+#     out[:n_ones] = 1
