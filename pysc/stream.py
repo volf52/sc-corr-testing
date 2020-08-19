@@ -5,7 +5,13 @@ import cupy as cp
 import numpy as np
 
 from pysc.ops import find_corr_mat, pearson, sc_corr
-from pysc.utils import ARRAY, createProbabilityStream, npStream
+from pysc.utils import (
+    ARRAY,
+    cpStream,
+    createProbabilityStream,
+    npStream,
+    shuffle_along_axis_cp,
+)
 
 
 def to_device(x: ARRAY, device):
@@ -53,17 +59,16 @@ class SCStream:
         )
         probStream *= self.__precision
 
-        if self.__device == "cpu":
-            probStream = probStream.astype(np.int32)
-        else:
-            probStream = cp.asnumpy(probStream).astype(np.int32)
-            cp.cuda.Stream.null.synchronize()
+        probStream = probStream.astype(np.int32)
 
-        self.__stream = np.zeros(inp.shape + (self.__precision,), dtype=np.bool)
-        npStream(probStream, self.__stream)
+        self.__stream = self.xp.zeros(inp.shape + (self.__precision,), dtype=np.bool)
+        if self.__device == "cpu":
+            npStream(probStream, self.__stream)
+        else:
+            cpStream(probStream, self.__stream, self.__stream)
 
         if self.__device != "cpu":
-            self.__stream = cp.array(self.__stream)
+            shuffle_along_axis_cp(self.__stream, self.ndim - 1)
             cp.cuda.Stream.null.synchronize()
 
     def to_device(self, device):
