@@ -53,24 +53,29 @@ def find_corr_mat(stream1: SCStream, stream2: SCStream, device):
     return a, b, c, d
 
 
-# Complete ndim implementation
+# TODO: Rewrite separately for np and cp with cp.EWK and numba
 
+def sc_corr(a, b, c, d, n):
+    # assumed ndim >= 2 for a,b,c,d
 
-def sc_corr_1d(a, b, c, d, n):
-    # valid only for 1D
-    numer = a * d - b * c
+    xp = cp.get_array_module(a)
+
+    numer = (a * d - b * c).astype(np.float32)
     apb = a + b
     apc = a + c
     a_b_into_a_c = apb * apc  # Common for both
-    if numer > 0:  # ad > bc
-        denom = n * min(apb, apc) - a_b_into_a_c
-    else:
-        denom = a_b_into_a_c - n * max(a - d, 0)
+    denom1 = n * xp.minimum(apb, apc) - a_b_into_a_c
+    denom2 = a_b_into_a_c - n * xp.maximum(a - d, 0)
 
-    return numer / denom
+    denom = xp.where(numer > 0, denom1, denom2)
+    numer /= denom
+
+    return numer
 
 
 def pearson(a, b, c, d):
-    numer = a * d - b * c
-    denom = sqrt((a + b) * (a + c) * (b + d) * (c + d))
-    return numer / denom
+    xp = cp.get_array_module(a)
+    numer = (a * d - b * c).astype(np.float32)
+    denom = xp.sqrt((a + b) * (a + c) * (b + d) * (c + d))
+    numer /= denom
+    return numer
