@@ -5,24 +5,37 @@ import numpy as np
 from numba import guvectorize
 
 ARRAY = Union[cp.ndarray, np.ndarray]
-FTYLIST = ["void(float32, int32, int32, int32, boolean[:], boolean[:])"]
-SIGNATURE = "(),(),(),(),(n)->(n)"
 
 
-def _SCStream(x, min_val, max_val, precision, _, out):
-    if x < min_val:
-        quantX = min_val
-    elif x > max_val:
-        quantX = max_val
-    else:
-        q = (max_val - min_val) / precision
-        quantX = q * round(x / q)
+def createProbabilityStream(inp: ARRAY, precision: int, encoding: str, device: str):
+    assert encoding in ("upe", "bpe")
+    assert device in ("cpu", "gpu", "cuda")
+    assert inp.dtype == np.float32
 
-    prob = (quantX + 1) / 2  # BPE Encoding probability
-    n_ones = int(prob * precision)
+    maxv = 1
+    minv = -1 if encoding == "bpe" else 0
+
+    q = (maxv - minv) / precision
+    out = inp.copy()
+    out.clip(minv, maxv, out=out)
+    out /= q
+    out.round(out=out)
+    out *= q
+
+    if encoding == "bpe":
+        out += 1.0
+        out /= 2.0
+
+    return out
+
+
+@guvectorize("void(int32, boolean[:])", "(),(n)", nopython=True)
+def npStream(n_ones: ARRAY, out: ARRAY):
+    #  Note than the probability stream has already been multiplied with precision and cast to int
     out[:n_ones] = 1
+    np.random.shuffle(out)
 
 
-Stream = guvectorize(FTYLIST, SIGNATURE, nopython=True)(_SCStream)
-
-StreamCuda = guvectorize(FTYLIST, SIGNATURE, nopython=True, target="cuda")(_SCStream)
+# @guvectorize("void(int32, boolean[:], boolean[:])", "(),(n)->(n)", target='cuda', nopython=True)
+# def cpStream(n_ones: ARRAY, _, out: ARRAY):
+#     out[:n_ones] = 1

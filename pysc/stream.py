@@ -5,7 +5,7 @@ import cupy as cp
 import numpy as np
 
 from pysc.ops import find_corr_mat, pearson, sc_corr
-from pysc.utils import ARRAY, Stream, StreamCuda
+from pysc.utils import ARRAY, createProbabilityStream, npStream
 
 
 def to_device(x: ARRAY, device):
@@ -24,22 +24,23 @@ class SCStream:
     Main class for SC Streams.
     """
 
-    def __init__(self, inp, /, min_val=-1, max_val=1, precision=8, *, device="cpu"):
+    def __init__(self, inp, /, precision=8, *, device="cpu", encoding="bpe"):
         assert device in ("cpu", "gpu")
-        self.precision = int(precision)
-        self.min_val = int(min_val)
-        self.max_val = int(max_val)
+        assert encoding in ("upe", "bpe")
+
+        self.__precision = int(precision)
+        self.min_val = -1 if encoding == "bpe" else 0
+        self.max_val = 1
         self.__device = device
+        self.__encoding = encoding
 
         if device == "cpu":
             self.xp = np
         else:
             self.xp = cp
 
-        self._stream_generator = [Stream, StreamCuda][device == "gpu"]
         self.__stream: ARRAY = None
         self.__generate_stream(inp)
-        self.shuffle_stream()
 
     def __generate_stream(self, inp):
         if not (isinstance(inp, np.ndarray) or isinstance(inp, cp.ndarray)):
@@ -47,19 +48,23 @@ class SCStream:
         else:
             inp = to_device(inp, self.__device)
 
-        self.__stream = self.xp.zeros(inp.shape + (self.precision,), dtype=np.bool)
-        self._stream_generator(
-            inp,
-            self.min_val,
-            self.max_val,
-            self.precision,
-            self.__stream,
-            self.__stream,
+        probStream = createProbabilityStream(
+            inp, self.__precision, self.__encoding, self.__device
         )
+        probStream *= self.__precision
 
-    def shuffle_stream(self):
-        last_axis = self.__stream.ndim - 1
-        self.xp.random.shuffle(self.__stream.swapaxes(0, last_axis))
+        if self.__device == "cpu":
+            probStream = probStream.astype(np.int32)
+        else:
+            probStream = cp.asnumpy(probStream).astype(np.int32)
+            cp.cuda.Stream.null.synchronize()
+
+        self.__stream = np.zeros(inp.shape + (self.__precision,), dtype=np.bool)
+        npStream(probStream, self.__stream)
+
+        if self.__device != "cpu":
+            self.__stream = cp.array(self.__stream)
+            cp.cuda.Stream.null.synchronize()
 
     def to_device(self, device):
         assert device in ("cpu", "gpu")
@@ -82,18 +87,26 @@ class SCStream:
 
         a, b, c, d = find_corr_mat(self.__stream, other.__stream, self.__device)
 
-        scc = sc_corr(a, b, c, d, self.precision)
+        scc = sc_corr(a, b, c, d, self.__precision)
         pearson_corr = pearson(a, b, c, d)
 
         return scc, pearson_corr
+
+    @property
+    def _stream(self):
+        return self.__stream
+
+    @property
+    def encoding(self):
+        return self.__encoding
 
     @property
     def device(self):
         return self.__device
 
     @property
-    def _stream(self):
-        return self.__stream
+    def precision(self):
+        return self.__precision
 
     @_stream.setter
     def _stream(self, newStream: ARRAY):
@@ -124,7 +137,7 @@ class SCStream:
         return self.__stream[idx]
 
     def __repr__(self):
-        s = f"Stream :-> '{self.precision}' Device: '{self.device}'"
+        s = f"Stream :-> '{self.__precision}' Device: '{self.device}'"
         s += f" Shape: '{self.__stream.shape}' Total: '{self.__stream.size}'\n"
         s += pformat(self.__stream)
 
