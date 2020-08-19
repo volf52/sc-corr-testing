@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import cupy as cp
 import numpy as np
 from numba import vectorize as nvectorize
@@ -43,47 +45,147 @@ _corr_matrix_cuda = cp.ElementwiseKernel(
 )
 
 
-def find_corr_mat(stream1: ARRAY, stream2: ARRAY, device):
+def find_corr_mat(
+    stream1: ARRAY, stream2: ARRAY, device
+) -> Tuple[ARRAY, ARRAY, ARRAY, ARRAY]:
     corr_func = [_corr_matrix_cuda, _corr_matrix][device == "cpu"]
     ax = None if (tmp := stream1.ndim) == 0 else tmp - 1
 
     a, b, c, d = corr_func(stream1, stream2)
-    a, b, c, d = a.sum(axis=ax), b.sum(axis=ax), c.sum(axis=ax), d.sum(axis=ax)
+
+    a = a.sum(axis=ax, dtype=np.uint32)
+    b = b.sum(axis=ax, dtype=np.uint32)
+    c = c.sum(axis=ax, dtype=np.uint32)
+    d = d.sum(axis=ax, dtype=np.uint32)
 
     return a, b, c, d
 
 
-# TODO: Rewrite separately for np and cp with cp.EWK and numba
+def sc_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, n: int, device) -> ARRAY:
+    assert device in ("cpu", "gpu")
+
+    if device == "cpu":
+        out = sc_corr_np(a, b, c, d, n)
+    else:
+        out = sc_corr_cp(a, b, c, d, n)
+
+    return out
 
 
-def sc_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, n: int):
-    # assumed ndim >= 2 for a,b,c,d
+# Improves time from 18 us to 1.67 us
+@nvectorize("float32(uint32, uint32, uint32, uint32, int32)", nopython=True)
+def sc_corr_np(a: ARRAY, b: ARRAY, c: ARRAY, d, n: int):
+    out = 1.0 * a * d
+    out -= b * c
 
-    xp = cp.get_array_module(a)
+    if out == 0:
+        return out
 
-    numer = (a * d - b * c).astype(np.float32)
     apb = a + b
     apc = a + c
-    a_b_into_a_c = apb * apc  # Common for both
-    denom1 = n * xp.minimum(apb, apc) - a_b_into_a_c
-    denom2 = a_b_into_a_c - n * xp.maximum(a - d, 0)
+    ab_into_ac = apb * apc
 
-    denom = xp.where(numer > 0, denom1, denom2)
+    if out > 0:
+        denom = n * np.minimum(apb, apc)
+        denom -= ab_into_ac
+    else:
+        denom = ab_into_ac
+        denom -= n * np.maximum(a - d, 0)
 
-    # have to calculate the mask before, as the division is done inplace
-    # not using xp.isnan after the division. Cause if there is still an nan there, we want to catch it in the tests
+    out /= denom
 
-    can_do_division = numer != 0
-    numer[can_do_division] /= denom[can_do_division]
-
-    return numer
+    return out
 
 
-def pearson(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY):
-    xp = cp.get_array_module(a)
+# Improved time from 565 us to 11.2 us
+sc_corr_cp = cp.ElementwiseKernel(
+    "uint32 a, uint32 b, uint32 c, uint32 d, int32 n",
+    "float32 out",
+    """
+        // Might have to change to unsigned long if required later
 
-    numer = (a * d - b * c).astype(np.float32)
-    denom = xp.sqrt((a + b) * (a + c) * (b + d) * (c + d))
-    numer /= denom
+        unsigned int apb, apc, ab_into_ac;
+        float denom;
 
-    return numer
+        out = 1.0 * a * d;
+        out -= b*c;
+
+        if(out != 0){
+            apb = a + b;
+            apc = a + c;
+            ab_into_ac = apb * apc;
+
+            if(out > 0){
+                denom = n * min(apb, apc);
+                denom -= ab_into_ac;
+            }
+            else{
+                denom = ab_into_ac;
+                denom -= n * max(a - d, 0);
+            }
+
+            out /= denom;
+        }
+    """,
+    "sc_corr_cp",
+    reduce_dims=True,
+)
+
+
+def pearson_corr(a: ARRAY, b: ARRAY, c: ARRAY, d: ARRAY, device) -> ARRAY:
+    assert device in ("cpu", "gpu")
+
+    if device == "cpu":
+        out = pearson_np(a, b, c, d)
+    else:
+        out = pearson_cp(a, b, c, d)
+
+    return out
+
+
+# Improved: 8.85 us -> 1.05 us
+@nvectorize("float32(uint32, uint32, uint32, uint32)", nopython=True)
+def pearson_np(a, b, c, d):
+    out = 1.0 * a * d
+    out -= b * c
+
+    if out == 0:
+        return out
+
+    denom = a + b
+    denom *= a + c
+    denom *= b + d
+    denom *= c + d
+    denom = np.sqrt(denom)
+
+    out /= denom
+
+    return out
+
+
+# Improved: 123 us -> 10.5 us
+pearson_cp = cp.ElementwiseKernel(
+    "uint32 a, uint32 b, uint32 c, uint32 d",
+    "float32 out",
+    """
+        // Might have to change here as well (to unsigned long) if required
+
+        float denom;
+
+        out = 1.0 * a * d;
+        out -= b*c;
+
+        if(out != 0){
+            // denom = 1.0;
+            denom = a + b;
+            denom *= a + c;
+            denom *= b + d;
+            denom *= c + d;
+            denom = sqrt(denom);
+
+            out /= denom;
+        }
+    """,
+    "pearson_cp",
+    reduce_dims=True,
+)

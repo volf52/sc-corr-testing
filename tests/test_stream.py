@@ -13,7 +13,7 @@ def base_arrays():
 
 
 def test_scstream_init_default(base_arrays):
-    stream = SCStream(base_arrays[0], -1.2, 1.0)
+    stream = SCStream(base_arrays[0])
 
     assert isinstance(stream.min_val, int)
     assert isinstance(stream.max_val, int)
