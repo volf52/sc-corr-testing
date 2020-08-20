@@ -1,10 +1,10 @@
 from pprint import pformat
-from typing import Tuple
+from typing import Tuple, Union
 
 import cupy as cp
 import numpy as np
 
-from pysc.ops import find_corr_mat, pearson_corr, sc_corr
+from pysc.ops import find_corr_mat, pearson_corr, sc_corr, _synchronize
 from pysc.utils import ARRAY, createProbabilityStream, npStream
 
 
@@ -24,7 +24,7 @@ class SCStream:
     Main class for SC Streams.
     """
 
-    def __init__(self, inp, /, precision=8, *, device="cpu", encoding="bpe"):
+    def __init__(self, inp, precision=8, *, device="cpu", encoding="bpe"):
         assert device in ("cpu", "gpu")
         assert encoding in ("upe", "bpe")
 
@@ -93,6 +93,36 @@ class SCStream:
         psc = pearson_corr(a, b, c, d, self.__device)
 
         return scc, psc
+
+    # To induce positive correlation between 2 SCStreams
+    @staticmethod
+    def synchronize(x: 'SCStream', y: 'SCStream', inplace=True):
+        assert x.precision == y.precision
+        if inplace:
+            newX = x[:]
+            newY = y[:]
+        else:
+            newX = x[:].copy()
+            newY = y[:].copy()
+
+        # Todo : investigate the effect of `depth` argument on the final result
+        _synchronize(x[:], y[:], x.precision, newX, newY)
+
+        # Todo : convert ARRAY to SCStream if not inplace
+        if not inplace:
+            return newX, newY
+
+    # Todo, Implement this (or something similar) ->
+    """
+    @staticmethod
+    def fromArray(stream: ARRAY): -> SCStream:
+    """
+
+    def decode(self) -> Union[float, ARRAY]:
+        if self.__encoding == 'upe':
+            return self.xp.count_nonzero(self.__stream, axis=-1) / self.precision
+        else:
+            return (2 * self.xp.count_nonzero(self.__stream, axis=-1) - self.precision) / self.precision
 
     @property
     def _stream(self):

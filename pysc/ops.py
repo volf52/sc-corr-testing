@@ -2,7 +2,7 @@ from typing import Tuple
 
 import cupy as cp
 import numpy as np
-from numba import vectorize as nvectorize
+from numba import guvectorize, vectorize as nvectorize
 
 from pysc.utils import ARRAY
 
@@ -49,7 +49,7 @@ def find_corr_mat(
     stream1: ARRAY, stream2: ARRAY, device
 ) -> Tuple[ARRAY, ARRAY, ARRAY, ARRAY]:
     corr_func = [_corr_matrix_cuda, _corr_matrix][device == "cpu"]
-    ax = None if (tmp := stream1.ndim) == 0 else tmp - 1
+    ax = None if stream1.ndim == 0 else stream1.ndim - 1
 
     a, b, c, d = corr_func(stream1, stream2)
 
@@ -189,3 +189,39 @@ pearson_cp = cp.ElementwiseKernel(
     "pearson_cp",
     reduce_dims=True,
 )
+
+@guvectorize(
+    ['void(boolean[:], boolean[:], int32, boolean[:], boolean[:])'],
+    '(n),(n),()->(n),(n)', nopython=True
+)
+def _synchronize(x, y, depth, outX, outY):
+    s = 1
+    for i in range(depth):
+        if s == 0:
+            if x[i] == y[i]:
+                outX[i] = outY[i] = x[i]
+            elif x[i] and not y[i]:
+                outX[i] = 1
+                outY[i] = 0
+            else:
+                outX[i] = outY[i] = 1
+                s = 1
+        elif s == 1:
+            if x[i] == y[i]:
+                outX[i] = outY[i] = x[i]
+            elif x[i] and not y[i]:
+                outX[i] = outY[i] = 0
+                s = 0
+            else:
+                outX[i] = outY[i] = 0
+                s = 2
+
+        elif s == 2:
+            if x[i] == y[i]:
+                outX[i] = outY[i] = x[i]
+            elif x[i] and not y[i]:
+                outX[i] = outY[i] = 1
+                s = 1
+            else:
+                outX[i] = 0
+                outY[i] = 1
