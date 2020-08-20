@@ -194,22 +194,22 @@ pearson_cp = cp.ElementwiseKernel(
     ['void(boolean[:], boolean[:], int32, boolean[:], boolean[:])'],
     '(n),(n),()->(n),(n)', nopython=True
 )
-def _synchronize(x, y, depth, outX, outY):
+def _synchronize(x, y, n, outX, outY):
     s = 1
-    for i in range(depth):
-        if s == 0:
-            if x[i] == y[i]:
-                outX[i] = outY[i] = x[i]
-            elif x[i] and not y[i]:
+    for i in range(n):
+
+        if x[i] == y[i]:
+            outX[i] = outY[i] = x[i]
+
+        elif s == 0:
+            if x[i] and not y[i]:
                 outX[i] = 1
                 outY[i] = 0
             else:
                 outX[i] = outY[i] = 1
                 s = 1
         elif s == 1:
-            if x[i] == y[i]:
-                outX[i] = outY[i] = x[i]
-            elif x[i] and not y[i]:
+            if x[i] and not y[i]:
                 outX[i] = outY[i] = 0
                 s = 0
             else:
@@ -217,11 +217,52 @@ def _synchronize(x, y, depth, outX, outY):
                 s = 2
 
         elif s == 2:
-            if x[i] == y[i]:
-                outX[i] = outY[i] = x[i]
-            elif x[i] and not y[i]:
+            if x[i] and not y[i]:
                 outX[i] = outY[i] = 1
                 s = 1
             else:
                 outX[i] = 0
                 outY[i] = 1
+
+@guvectorize(
+    ['void(boolean[:], boolean[:], int32, boolean[:], boolean[:])'],
+    '(n),(n),()->(n),(n)', nopython=True
+)
+def _desynchronize(x, y, n, outX, outY):
+    s = 0
+    for i in range(n):
+        if x[i] ^ y[i]:
+            outX[i] = x[i]
+            outY[i] = y[i]
+
+        elif s == 0:
+            if x[i] and y[i]:
+                outX[i] = 0
+                outY[i] = 1
+                s = 1
+            else:
+                outX[i] = outY[i] = 0
+
+        elif s == 1:
+            if x[i] and y[i]:
+                outX[i] = outY[i] = 1
+            else:
+                outX[i] = 1
+                outY[i] = 0
+                s = 2
+
+        elif s == 2:
+            if x[i] and y[i]:
+                outX[i] = 1
+                outY[i] = 0
+                s = 3
+            else:
+                outX[i] = outY[i] = 0
+
+        elif s == 3:
+            if x[i] and y[i]:
+                outX[i] = outY[i] = 1
+            else:
+                outX[i] = 0
+                outY[1] = 1
+                s = 0

@@ -4,7 +4,7 @@ from typing import Tuple, Union
 import cupy as cp
 import numpy as np
 
-from pysc.ops import find_corr_mat, pearson_corr, sc_corr, _synchronize
+from pysc.ops import find_corr_mat, pearson_corr, sc_corr, _synchronize, _desynchronize
 from pysc.utils import ARRAY, createProbabilityStream, npStream
 
 
@@ -24,15 +24,15 @@ class SCStream:
     Main class for SC Streams.
     """
 
-    def __init__(self, /, precision=8, *, device="cpu", encoding="bpe", printMsg = True):
+    def __init__(self, precision=8, *, device="cpu", encoding="bpe", printMsg = True):
         assert device in ("cpu", "gpu")
         assert encoding in ("upe", "bpe")
 
         self.__precision = int(precision)
         self.min_val = -1 if encoding == "bpe" else 0
         self.max_val = 1
-        self.__device = device
-        self.__encoding = encoding
+        self._device = device
+        self._encoding = encoding
 
         if device == "cpu":
             self.xp = np
@@ -46,7 +46,7 @@ class SCStream:
 
     @classmethod
     def from_input_array(
-        cls, inp: ARRAY, /, precision=8, *, device="cpu", encoding="bpe"
+        cls, inp: ARRAY, precision=8, *, device="cpu", encoding="bpe"
     ):
 
         scStream = cls(precision=precision, device=device, encoding=encoding, printMsg=False)
@@ -59,7 +59,7 @@ class SCStream:
 
         probStream *= precision
 
-        if scStream.__device == "cpu":
+        if scStream._device == "cpu":
             probStream = probStream.astype(np.int32)
         else:
             probStream = cp.asnumpy(probStream).astype(np.int32)
@@ -70,13 +70,13 @@ class SCStream:
         return scStream
 
     @classmethod
-    def from_probability_array(cls, probs: ARRAY, /, precision=8, *, device="cpu", encoding="bpe"):
+    def from_probability_array(cls, probs: ARRAY, precision=8, *, device="cpu", encoding="bpe"):
         scStream = cls(precision=precision, device=device, encoding=encoding, printMsg=False)
 
         probs = probs.copy()
         probs *= precision
 
-        if scStream.__device == "cpu":
+        if scStream._device == "cpu":
             probStream = probs.astype(np.int32)
         else:
             probStream = cp.asnumpy(probs).astype(np.int32)
@@ -87,7 +87,7 @@ class SCStream:
         return scStream
 
     @classmethod
-    def from_stream_array(cls, streams: ARRAY, encoding: str, /, *, device="cpu"):
+    def from_stream_array(cls, streams: ARRAY, encoding: str, *, device="cpu"):
         # The encoding parameters is non_default here to ensure the user enters the correct encoding scheme
         assert streams.dtype == np.bool
         assert streams.ndim > 1
@@ -108,7 +108,7 @@ class SCStream:
         self.__stream = np.zeros(probStream.shape + (self.__precision,), dtype=np.bool)
         npStream(probStream, self.__stream)
 
-        if self.__device != "cpu":
+        if self._device != "cpu":
             self.__stream = cp.array(self.__stream)
             cp.cuda.Stream.null.synchronize()
 
@@ -116,10 +116,10 @@ class SCStream:
 
     def to_device(self, device):
         assert device in ("cpu", "gpu")
-        if device == self.__device:
+        if device == self._device:
             return
 
-        self.__device = device
+        self._device = device
 
         if device == "cpu":
             self.xp = np
@@ -134,13 +134,13 @@ class SCStream:
 
         assert self.shape == other.shape
         assert (
-            self.__device == other.__device
+            self._device == other._device
         )  # may change to moving to cpu if devices are not the same
 
-        a, b, c, d = find_corr_mat(self.__stream, other.__stream, self.__device)
+        a, b, c, d = find_corr_mat(self.__stream, other.__stream, self._device)
 
-        scc = sc_corr(a, b, c, d, self.__precision, self.__device)
-        psc = pearson_corr(a, b, c, d, self.__device)
+        scc = sc_corr(a, b, c, d, self.__precision, self._device)
+        psc = pearson_corr(a, b, c, d, self._device)
 
         return scc, psc
 
@@ -155,12 +155,32 @@ class SCStream:
             newX = x[:].copy()
             newY = y[:].copy()
 
-        # Todo : investigate the effect of `depth` argument on the final result
         _synchronize(x[:], y[:], x.precision, newX, newY)
 
-        # Todo : convert ARRAY to SCStream if not inplace
         if not inplace:
+            newX = SCStream.from_stream_array(newX, x._encoding, device=x._device)
+            newY = SCStream.from_stream_array(newY, y._encoding, device=y._device)
+
             return newX, newY
+
+    @staticmethod
+    def desynchronize(x: 'SCStream', y: 'SCStream', inplace=True):
+        assert x.precision == y.precision
+        if inplace:
+            newX = x[:]
+            newY = y[:]
+        else:
+            newX = x[:].copy()
+            newY = y[:].copy()
+
+        _desynchronize(x[:], y[:], x.precision, newX, newY)
+
+        if not inplace:
+            newX = SCStream.from_stream_array(newX, x._encoding, device=x._device)
+            newY = SCStream.from_stream_array(newY, y._encoding, device=y._device)
+
+            return newX, newY
+
 
     # Todo, Implement this (or something similar) ->
     """
@@ -169,7 +189,7 @@ class SCStream:
     """
 
     def decode(self) -> Union[float, ARRAY]:
-        if self.__encoding == "upe":
+        if self._encoding == "upe":
             return self.xp.count_nonzero(self.__stream, axis=-1) / self.precision
         else:
             return (
@@ -182,11 +202,11 @@ class SCStream:
 
     @property
     def encoding(self):
-        return self.__encoding
+        return self._encoding
 
     @property
     def device(self):
-        return self.__device
+        return self._device
 
     @property
     def precision(self):
@@ -196,7 +216,7 @@ class SCStream:
     def _stream(self, newStream: ARRAY):
         assert newStream.shape == self.__stream.shape
         assert newStream.dtype == self.__stream.dtype
-        newStream = to_device(newStream, self.__device)
+        newStream = to_device(newStream, self._device)
         self.__stream = newStream
 
     @property
