@@ -46,11 +46,9 @@ def starter_values():
 def test_stream_corr(starter_values):
     xvals, yvals = starter_values["xvals"], starter_values["yvals"]
 
-    sc_one = SCStream(np.zeros(xvals.shape[0], dtype=np.float32))
-    sc_two = SCStream(np.zeros(yvals.shape[0], dtype=np.float32))
 
-    sc_one._stream = xvals
-    sc_two._stream = yvals
+    sc_one = SCStream.from_stream_array(xvals, "bpe")
+    sc_two = SCStream.from_stream_array(yvals, "bpe")
 
     scc, psc = sc_one.corr_with(sc_two)
     psc.round(2, out=psc)
@@ -63,11 +61,8 @@ def test_stream_corr_cuda(starter_values):
     xvals, yvals = starter_values["xvals_cuda"], starter_values["yvals_cuda"]
     device = "gpu"
 
-    sc_one = SCStream(np.zeros(xvals.shape[0], dtype=np.float32), device=device)
-    sc_two = SCStream(np.zeros(yvals.shape[0], dtype=np.float32), device=device)
-
-    sc_one._stream = xvals
-    sc_two._stream = yvals
+    sc_one = SCStream.from_stream_array(xvals, "bpe", device=device)
+    sc_two = SCStream.from_stream_array(yvals, "bpe", device=device)
 
     scc, psc = sc_one.corr_with(sc_two)
     psc.round(2, out=psc)

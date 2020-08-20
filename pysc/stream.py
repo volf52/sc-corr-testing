@@ -24,7 +24,7 @@ class SCStream:
     Main class for SC Streams.
     """
 
-    def __init__(self, inp, precision=8, *, device="cpu", encoding="bpe"):
+    def __init__(self, /, precision=8, *, device="cpu", encoding="bpe", printMsg = True):
         assert device in ("cpu", "gpu")
         assert encoding in ("upe", "bpe")
 
@@ -40,33 +40,79 @@ class SCStream:
             self.xp = cp
 
         self.__stream: ARRAY = None
-        self.__generate_stream(inp)
 
-        cp.get_default_memory_pool().free_all_blocks()
+        if printMsg:
+            print("Please use the alternative constructors (from_input_array, from_probability_array, from_stream_array) etc")
 
-    def __generate_stream(self, inp):
+    @classmethod
+    def from_input_array(
+        cls, inp: ARRAY, /, precision=8, *, device="cpu", encoding="bpe"
+    ):
+
+        scStream = cls(precision=precision, device=device, encoding=encoding, printMsg=False)
         if not (isinstance(inp, np.ndarray) or isinstance(inp, cp.ndarray)):
-            inp = self.xp.array(inp, dtype=np.float32)[None]
+            inp = scStream.xp.array(inp, dype=np.float32)[None]
         else:
-            inp = to_device(inp, self.__device)
+            inp = to_device(inp, device)
 
-        probStream = createProbabilityStream(
-            inp, self.__precision, self.__encoding, self.__device
-        )
-        probStream *= self.__precision
+        probStream = createProbabilityStream(inp, precision, encoding, device)
 
-        if self.__device == "cpu":
+        probStream *= precision
+
+        if scStream.__device == "cpu":
             probStream = probStream.astype(np.int32)
         else:
             probStream = cp.asnumpy(probStream).astype(np.int32)
             cp.cuda.Stream.null.synchronize()
 
-        self.__stream = np.zeros(inp.shape + (self.__precision,), dtype=np.bool)
+        scStream.__generate_stream(probStream)
+
+        return scStream
+
+    @classmethod
+    def from_probability_array(cls, probs: ARRAY, /, precision=8, *, device="cpu", encoding="bpe"):
+        scStream = cls(precision=precision, device=device, encoding=encoding, printMsg=False)
+
+        probs = probs.copy()
+        probs *= precision
+
+        if scStream.__device == "cpu":
+            probStream = probs.astype(np.int32)
+        else:
+            probStream = cp.asnumpy(probs).astype(np.int32)
+            cp.cuda.Stream.null.synchronize()
+
+        scStream.__generate_stream(probStream)
+
+        return scStream
+
+    @classmethod
+    def from_stream_array(cls, streams: ARRAY, encoding: str, /, *, device="cpu"):
+        # The encoding parameters is non_default here to ensure the user enters the correct encoding scheme
+        assert streams.dtype == np.bool
+        assert streams.ndim > 1
+
+        scStream = cls(precision=streams.shape[-1], device=device, encoding=encoding, printMsg=False)
+
+        # Copy is made to ensure the changes in the streams array do not cause changes to this object
+        streams = to_device(streams.copy(), device)
+
+        scStream.__stream = streams
+        cp.get_default_memory_pool().free_all_blocks()
+
+        return scStream
+
+
+
+    def __generate_stream(self, probStream: ARRAY):
+        self.__stream = np.zeros(probStream.shape + (self.__precision,), dtype=np.bool)
         npStream(probStream, self.__stream)
 
         if self.__device != "cpu":
             self.__stream = cp.array(self.__stream)
             cp.cuda.Stream.null.synchronize()
+
+        cp.get_default_memory_pool().free_all_blocks()
 
     def to_device(self, device):
         assert device in ("cpu", "gpu")
@@ -82,6 +128,10 @@ class SCStream:
             self.xp = cp
 
     def corr_with(self, other: "SCStream") -> Tuple[ARRAY, ARRAY]:
+        if self.__stream is None or other.__stream is None:
+            print("Set the underlying stream array")
+            return None, None
+
         assert self.shape == other.shape
         assert (
             self.__device == other.__device
@@ -96,7 +146,7 @@ class SCStream:
 
     # To induce positive correlation between 2 SCStreams
     @staticmethod
-    def synchronize(x: 'SCStream', y: 'SCStream', inplace=True):
+    def synchronize(x: "SCStream", y: "SCStream", inplace=True):
         assert x.precision == y.precision
         if inplace:
             newX = x[:]
@@ -119,10 +169,12 @@ class SCStream:
     """
 
     def decode(self) -> Union[float, ARRAY]:
-        if self.__encoding == 'upe':
+        if self.__encoding == "upe":
             return self.xp.count_nonzero(self.__stream, axis=-1) / self.precision
         else:
-            return (2 * self.xp.count_nonzero(self.__stream, axis=-1) - self.precision) / self.precision
+            return (
+                2 * self.xp.count_nonzero(self.__stream, axis=-1) - self.precision
+            ) / self.precision
 
     @property
     def _stream(self):
