@@ -146,40 +146,33 @@ class SCStream:
 
     # To induce positive correlation between 2 SCStreams
     @staticmethod
-    def synchronize(x: "SCStream", y: "SCStream", inplace=True):
+    def sync_with(x: 'SCStream', y: 'SCStream', inplace=True):
         assert x.precision == y.precision
         if inplace:
             newX = x[:]
-            newY = y[:]
         else:
             newX = x[:].copy()
-            newY = y[:].copy()
 
-        _synchronize(x[:], y[:], x.precision, newX, newY)
+        _synchronize(x[:], y[:], x.precision, newX)
 
         if not inplace:
             newX = SCStream.from_stream_array(newX, x._encoding, device=x._device)
-            newY = SCStream.from_stream_array(newY, y._encoding, device=y._device)
-
-            return newX, newY
+            return newX
 
     @staticmethod
-    def desynchronize(x: 'SCStream', y: 'SCStream', inplace=True):
+    def desync_with(x: 'SCStream', y: 'SCStream', inplace=True):
         assert x.precision == y.precision
         if inplace:
             newX = x[:]
-            newY = y[:]
         else:
             newX = x[:].copy()
-            newY = y[:].copy()
 
-        _desynchronize(x[:], y[:], x.precision, newX, newY)
+        _desynchronize(x[:], y[:], x.precision, newX)
 
         if not inplace:
             newX = SCStream.from_stream_array(newX, x._encoding, device=x._device)
-            newY = SCStream.from_stream_array(newY, y._encoding, device=y._device)
 
-            return newX, newY
+            return newX
 
 
     # Todo, Implement this (or something similar) ->

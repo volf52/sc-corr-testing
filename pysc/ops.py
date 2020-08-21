@@ -191,78 +191,56 @@ pearson_cp = cp.ElementwiseKernel(
 )
 
 @guvectorize(
-    ['void(boolean[:], boolean[:], int32, boolean[:], boolean[:])'],
-    '(n),(n),()->(n),(n)', nopython=True
+    ['void(boolean[:], boolean[:], int32, boolean[:])'],
+    '(n),(n),()->(n)', nopython=True
 )
-def _synchronize(x, y, n, outX, outY):
-    s = 1
-    for i in range(n):
-
-        if x[i] == y[i]:
-            outX[i] = outY[i] = x[i]
-
-        elif s == 0:
-            if x[i] and not y[i]:
-                outX[i] = 1
-                outY[i] = 0
-            else:
-                outX[i] = outY[i] = 1
-                s = 1
-        elif s == 1:
-            if x[i] and not y[i]:
-                outX[i] = outY[i] = 0
-                s = 0
-            else:
-                outX[i] = outY[i] = 0
-                s = 2
-
-        elif s == 2:
-            if x[i] and not y[i]:
-                outX[i] = outY[i] = 1
-                s = 1
-            else:
-                outX[i] = 0
-                outY[i] = 1
-
-@guvectorize(
-    ['void(boolean[:], boolean[:], int32, boolean[:], boolean[:])'],
-    '(n),(n),()->(n),(n)', nopython=True
-)
-def _desynchronize(x, y, n, outX, outY):
-    s = 0
+def _desynchronize(x, y, n, outX):
+    o_o = -1    # 1, 1
+    z_z = -1    # 0, 0
     for i in range(n):
         if x[i] ^ y[i]:
             outX[i] = x[i]
-            outY[i] = y[i]
-
-        elif s == 0:
-            if x[i] and y[i]:
+        elif x[i] and y[i]:
+            if z_z != -1:
+                outX[z_z] = 1
                 outX[i] = 0
-                outY[i] = 1
-                s = 1
+                z_z = -1
             else:
-                outX[i] = outY[i] = 0
-
-        elif s == 1:
-            if x[i] and y[i]:
-                outX[i] = outY[i] = 1
-            else:
+                o_o = i
                 outX[i] = 1
-                outY[i] = 0
-                s = 2
-
-        elif s == 2:
-            if x[i] and y[i]:
+        else:
+            if o_o != -1:
+                outX[o_o] = 0
                 outX[i] = 1
-                outY[i] = 0
-                s = 3
+                o_o = -1
             else:
-                outX[i] = outY[i] = 0
-
-        elif s == 3:
-            if x[i] and y[i]:
-                outX[i] = outY[i] = 1
-            else:
+                z_z = i
                 outX[i] = 0
-                outY[1] = 1
-                s = 0
+
+@guvectorize(
+    ['void(boolean[:], boolean[:], int32, boolean[:])'],
+    '(n),(n),()->(n)', nopython=True
+)
+def _synchronize(x, y, n, outX):
+    z_o = -1    # 0, 1
+    o_z = -1    # 1, 0
+    for i in range(n):
+        if x[i] == y[i]:
+            outX[i] = x[i]
+        elif not x[i] and y[i]:
+            if o_z != -1:
+                outX[o_z] = 0
+                outX[i] = 1
+                o_z = -1
+            else:
+                z_o = i
+                outX[i] = 0
+        else:
+            if z_o != -1:
+                outX[z_o] = 1
+                outX[i] = 0
+                z_o = -1
+            else:
+                o_z = i
+                outX[i] = 1
+
