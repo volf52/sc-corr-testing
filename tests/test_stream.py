@@ -13,7 +13,7 @@ def base_arrays():
 
 
 def test_scstream_init_default(base_arrays):
-    stream = SCStream(base_arrays[0])
+    stream = SCStream.from_input_array(base_arrays[0])
 
     assert isinstance(stream.min_val, int)
     assert isinstance(stream.max_val, int)
@@ -26,7 +26,7 @@ def test_scstream_init_default(base_arrays):
 
 
 def test_scstream_init_options(base_arrays):
-    stream = SCStream(base_arrays[1], precision=16, device="gpu")
+    stream = SCStream.from_input_array(base_arrays[1], precision=16, device="gpu")
     assert stream.device == "gpu"
     assert stream.precision == 16
     assert isinstance(stream._stream, cp.ndarray)

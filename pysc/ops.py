@@ -2,7 +2,7 @@ from typing import Tuple
 
 import cupy as cp
 import numpy as np
-from numba import vectorize as nvectorize
+from numba import guvectorize, vectorize as nvectorize
 
 from pysc.utils import ARRAY
 
@@ -49,7 +49,7 @@ def find_corr_mat(
     stream1: ARRAY, stream2: ARRAY, device
 ) -> Tuple[ARRAY, ARRAY, ARRAY, ARRAY]:
     corr_func = [_corr_matrix_cuda, _corr_matrix][device == "cpu"]
-    ax = None if (tmp := stream1.ndim) == 0 else tmp - 1
+    ax = None if stream1.ndim == 0 else stream1.ndim - 1
 
     a, b, c, d = corr_func(stream1, stream2)
 
@@ -189,3 +189,58 @@ pearson_cp = cp.ElementwiseKernel(
     "pearson_cp",
     reduce_dims=True,
 )
+
+@guvectorize(
+    ['void(boolean[:], boolean[:], int32, boolean[:])'],
+    '(n),(n),()->(n)', nopython=True
+)
+def _desynchronize(x, y, n, outX):
+    o_o = -1    # 1, 1
+    z_z = -1    # 0, 0
+    for i in range(n):
+        if x[i] ^ y[i]:
+            outX[i] = x[i]
+        elif x[i] and y[i]:
+            if z_z != -1:
+                outX[z_z] = 1
+                outX[i] = 0
+                z_z = -1
+            else:
+                o_o = i
+                outX[i] = 1
+        else:
+            if o_o != -1:
+                outX[o_o] = 0
+                outX[i] = 1
+                o_o = -1
+            else:
+                z_z = i
+                outX[i] = 0
+
+@guvectorize(
+    ['void(boolean[:], boolean[:], int32, boolean[:])'],
+    '(n),(n),()->(n)', nopython=True
+)
+def _synchronize(x, y, n, outX):
+    z_o = -1    # 0, 1
+    o_z = -1    # 1, 0
+    for i in range(n):
+        if x[i] == y[i]:
+            outX[i] = x[i]
+        elif not x[i] and y[i]:
+            if o_z != -1:
+                outX[o_z] = 0
+                outX[i] = 1
+                o_z = -1
+            else:
+                z_o = i
+                outX[i] = 0
+        else:
+            if z_o != -1:
+                outX[z_o] = 1
+                outX[i] = 0
+                z_o = -1
+            else:
+                o_z = i
+                outX[i] = 1
+
